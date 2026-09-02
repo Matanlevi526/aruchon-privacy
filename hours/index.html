@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="שעות עוז">
+<meta name="theme-color" content="#0e7490">
+<title>דף שעות ניקוי ספות</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+background:#f1f5f9;color:#0f172a;padding-bottom:40px}
+header{background:linear-gradient(135deg,#0e7490,#155e75);color:#fff;padding:22px 16px 28px;
+text-align:center;border-radius:0 0 24px 24px}
+header h1{margin:0;font-size:19px;font-weight:800}
+header .who{margin-top:6px;font-size:15px;opacity:.92}
+header .upd{margin-top:10px;font-size:12px;opacity:.75}
+.wrap{max-width:760px;margin:0 auto;padding:0 12px}
+.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:-16px}
+.card{background:#fff;border-radius:16px;padding:14px;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.card .l{font-size:13px;color:#64748b;font-weight:600}
+.card .v{font-size:28px;font-weight:900;color:#0e7490;margin-top:2px}
+.card.wide{grid-column:1/-1}
+.card.wide .v{color:#155e75}
+.mini{display:flex;gap:14px;margin-top:8px;flex-wrap:wrap}
+.mini span{font-size:13px;font-weight:700;color:#475569}
+h2{font-size:17px;margin:26px 0 10px;font-weight:800}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:16px;overflow:hidden;
+box-shadow:0 2px 10px rgba(0,0,0,.06)}
+th{background:#155e75;color:#fff;font-size:13px;padding:10px 8px;text-align:right;
+font-weight:700;white-space:nowrap}
+td{padding:10px 8px;border-bottom:1px solid #e2e8f0;font-size:14px;vertical-align:top}
+td.num{text-align:center;white-space:nowrap}
+td.tot{font-weight:800;color:#0e7490}
+tr.xr td{padding-top:0}
+.sub{font-size:12px;color:#64748b;margin-top:2px}
+.chips{display:flex;gap:10px;flex-wrap:wrap}
+.chips span{font-size:12px;font-weight:700}
+.tag{background:#cffafe;color:#155e75;padding:1px 7px;border-radius:8px;font-size:11px;font-weight:700}
+.p125{color:#d97706}.p150{color:#dc2626}.ok{color:#16a34a;font-weight:700}
+.muted{color:#64748b;font-weight:500}
+.empty,.msg{background:#fff;border-radius:16px;padding:28px;text-align:center;color:#64748b;
+margin-top:20px;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.msg h2{margin:0 0 8px;color:#0f172a}
+footer{text-align:center;color:#94a3b8;font-size:12px;margin-top:24px;padding:0 16px;line-height:1.7}
+</style>
+</head>
+<body>
+<div id="app"><div class="msg">טוען…</div></div>
+
+<script>
+var SUPABASE_URL = 'https://orywkefbkncgmfzdkbzi.supabase.co';
+var ANON_KEY = 'sb_publishable_YIXLfgmvQeWQ9HiKVfK5jw_cChmjZRo';
+var ZONE = 'Asia/Jerusalem';
+
+// ---- לוח החגים (זהה לאפליקציה) ----
+var YOMTOV = {
+  '2026-04-02':'פסח א׳','2026-04-08':'שביעי של פסח','2026-04-22':'יום העצמאות',
+  '2026-05-22':'שבועות','2026-09-12':'ראש השנה א׳','2026-09-13':'ראש השנה ב׳',
+  '2026-09-21':'יום כיפור','2026-09-26':'סוכות א׳','2026-10-03':'שמיני עצרת',
+  '2027-04-22':'פסח א׳','2027-04-28':'שביעי של פסח','2027-05-12':'יום העצמאות',
+  '2027-06-11':'שבועות','2027-10-02':'ראש השנה א׳','2027-10-03':'ראש השנה ב׳',
+  '2027-10-11':'יום כיפור','2027-10-16':'סוכות א׳','2027-10-23':'שמיני עצרת',
+  '2028-04-11':'פסח א׳','2028-04-17':'שביעי של פסח','2028-05-02':'יום העצמאות',
+  '2028-05-31':'שבועות','2028-09-21':'ראש השנה א׳','2028-09-22':'ראש השנה ב׳',
+  '2028-09-30':'יום כיפור','2028-10-05':'סוכות א׳','2028-10-12':'שמיני עצרת'
+};
+var EREV = {
+  '2026-04-01':'ערב פסח','2026-04-07':'ערב שביעי של פסח','2026-05-21':'ערב שבועות',
+  '2026-09-11':'ערב ראש השנה','2026-09-20':'ערב יום כיפור','2026-09-25':'ערב סוכות',
+  '2026-10-02':'ערב שמיני עצרת',
+  '2027-04-21':'ערב פסח','2027-04-27':'ערב שביעי של פסח','2027-06-10':'ערב שבועות',
+  '2027-10-01':'ערב ראש השנה','2027-10-10':'ערב יום כיפור','2027-10-15':'ערב סוכות',
+  '2027-10-22':'ערב שמיני עצרת',
+  '2028-04-10':'ערב פסח','2028-04-16':'ערב שביעי של פסח','2028-05-30':'ערב שבועות',
+  '2028-09-20':'ערב ראש השנה','2028-09-29':'ערב יום כיפור','2028-10-04':'ערב סוכות',
+  '2028-10-11':'ערב שמיני עצרת'
+};
+
+var STD = 480, EREV_STD = 420, CAP = 120;
+var DAYS_HE = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+var MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+
+function weekday(k){ return new Date(k + 'T12:00:00+03:00').getUTCDay(); }
+function dayNameHe(k){ return DAYS_HE[weekday(k)]; }
+
+function dayType(k){
+  if (YOMTOV[k]) return 'chag';
+  var w = weekday(k);
+  if (w === 6) return 'shabbat';
+  if (w === 5) return 'friday';
+  if (EREV[k]) return 'erev';
+  return 'regular';
+}
+function dayTypeLabel(k){
+  if (YOMTOV[k]) return YOMTOV[k];
+  if (EREV[k]) return EREV[k];
+  var t = dayType(k);
+  return t === 'shabbat' ? 'שבת' : t === 'friday' ? 'שישי' : '';
+}
+function breakdown(k, mins){
+  var t = Math.max(0, Math.round(mins || 0));
+  var ty = dayType(k);
+  if (ty === 'chag' || ty === 'shabbat') return { reg:0, ot125:0, ot150:t };
+  if (ty === 'friday') return { reg:0, ot125:t, ot150:0 };
+  var s = ty === 'erev' ? EREV_STD : STD;
+  return {
+    reg: Math.min(t, s),
+    ot125: Math.min(Math.max(t - s, 0), CAP),
+    ot150: Math.max(t - s - CAP, 0)
+  };
+}
+function r2(n){ return Math.round(n * 100) / 100; }
+function dec(m){ return r2((m || 0) / 60); }
+function weighted(b){ return r2(b.reg/60 + (b.ot125/60)*1.25 + (b.ot150/60)*1.5); }
+
+function hhmm(iso){
+  if (!iso) return '—';
+  return new Intl.DateTimeFormat('he-IL', {
+    timeZone: ZONE, hour: '2-digit', minute: '2-digit', hour12: false
+  }).format(new Date(iso));
+}
+function ddmm(k){ var p = k.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+function monthLabel(mk){
+  if (!mk) return '';
+  var p = mk.split('-');
+  return MONTHS[Number(p[1]) - 1] + ' ' + p[0];
+}
+var ESCAPES = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ESCAPES[c]; }); }
+function splitCoworkers(raw){
+  if (!raw) return [];
+  return raw.split(/[,،+&]|\sו-|\sועוד\s/).map(function(s){ return s.trim(); })
+    .filter(function(s){ return s; });
+}
+
+function showMsg(title, text){
+  document.getElementById('app').innerHTML =
+    '<div class="msg"><h2>' + esc(title) + '</h2><p>' + esc(text) + '</p></div>';
+}
+
+function render(data){
+  var month = data.month || '';
+  var all = data.records || [];
+  var rows = all.filter(function(r){ return r.date && r.date.indexOf(month) === 0; })
+    .sort(function(a,b){
+      return (a.date + (a.entry||'')).localeCompare(b.date + (b.entry||''));
+    });
+
+  var tAll=0, tReg=0, t125=0, t150=0, tW=0;
+  var cw = {};
+
+  var bodyRows = rows.map(function(r){
+    var b = breakdown(r.date, r.totalMinutes);
+    var dAll = dec(r.totalMinutes), dReg = dec(b.reg), d125 = dec(b.ot125), d150 = dec(b.ot150);
+    var w = weighted(b);
+    tAll += dAll; tReg += dReg; t125 += d125; t150 += d150; tW += w;
+
+    splitCoworkers(r.coworker || '').forEach(function(n){
+      var c = cw[n] || { days:0, hours:0, reg:0, ot125:0, ot150:0, w:0 };
+      c.days++; c.hours += dAll; c.reg += dReg; c.ot125 += d125; c.ot150 += d150; c.w += w;
+      cw[n] = c;
+    });
+
+    var label = dayTypeLabel(r.date);
+    var badge = label ? '<span class="tag">' + esc(label) + '</span>' : '';
+    var extra = [
+      d125 > 0 ? '<span class="p125">125%: ' + d125 + '</span>' : '',
+      d150 > 0 ? '<span class="p150">150%: ' + d150 + '</span>' : '',
+      r.coworker ? '<span class="muted">👥 ' + esc(r.coworker) + '</span>' : '',
+      r.notes ? '<span class="muted">📝 ' + esc(r.notes) + '</span>' : ''
+    ].filter(Boolean).join('');
+
+    return '<tr><td><b>' + ddmm(r.date) + '</b><div class="sub">' + dayNameHe(r.date) + ' ' +
+      badge + '</div></td><td class="num">' + hhmm(r.entry) + '</td><td class="num">' +
+      hhmm(r.exit) + '</td><td class="num tot">' + dAll + '</td></tr>' +
+      (extra ? '<tr class="xr"><td colspan="4"><div class="chips">' + extra + '</div></td></tr>' : '');
+  }).join('');
+
+  var cwRows = Object.keys(cw).sort(function(a,b){ return cw[b].hours - cw[a].hours; })
+    .map(function(n){
+      var c = cw[n];
+      return '<tr><td>' + esc(n) + '</td><td class="num">' + c.days + '</td><td class="num">' +
+        r2(c.hours) + '</td><td class="num">' + r2(c.reg) + '</td><td class="num">' +
+        r2(c.ot125) + '</td><td class="num">' + r2(c.ot150) + '</td><td class="num tot">' +
+        r2(c.w) + '</td></tr>';
+    }).join('');
+
+  var chagRows = Object.keys(YOMTOV).filter(function(d){ return d.indexOf(month) === 0; })
+    .sort().map(function(d){
+      var worked = rows.some(function(r){ return r.date === d && r.totalMinutes > 0; });
+      return '<tr><td><b>' + ddmm(d) + '</b><div class="sub">' + dayNameHe(d) +
+        '</div></td><td>' + esc(YOMTOV[d]) + '</td><td>' +
+        (worked ? '<span class="p150">עבד — 150%</span>' : '<span class="ok">דמי חגים</span>') +
+        '</td></tr>';
+    }).join('');
+
+  var updated = new Intl.DateTimeFormat('he-IL', {
+    timeZone: ZONE, dateStyle: 'short', timeStyle: 'short'
+  }).format(new Date(data.updatedAt));
+
+  document.getElementById('app').innerHTML =
+    '<header><h1>דף שעות ניקוי ספות — עוז סגל</h1>' +
+    '<div class="who">' + esc(data.employeeName) + ' · ' + esc(monthLabel(month)) + '</div>' +
+    '<div class="upd">עודכן: ' + updated + '</div></header>' +
+    '<div class="wrap"><div class="cards">' +
+    '<div class="card"><div class="l">סה"כ שעות</div><div class="v">' + r2(tAll) + '</div></div>' +
+    '<div class="card"><div class="l">ימי עבודה</div><div class="v">' + rows.length + '</div></div>' +
+    '<div class="card wide"><div class="l">סה"כ משוקלל לתשלום</div><div class="v">' + r2(tW) +
+    '</div><div class="mini"><span>100%: ' + r2(tReg) + '</span>' +
+    '<span class="p125">125%: ' + r2(t125) + '</span>' +
+    '<span class="p150">150%: ' + r2(t150) + '</span></div></div></div>' +
+    '<h2>פירוט יומי</h2>' +
+    (rows.length
+      ? '<div class="scroll"><table><thead><tr><th>תאריך</th><th>כניסה</th><th>יציאה</th>' +
+        '<th>סה"כ</th></tr></thead><tbody>' + bodyRows + '</tbody></table></div>'
+      : '<div class="empty">אין רישומים בחודש זה</div>') +
+    (cwRows
+      ? '<h2>עובדים נוספים</h2><div class="scroll"><table><thead><tr><th>שם</th><th>ימים</th>' +
+        '<th>שעות</th><th>100%</th><th>125%</th><th>150%</th><th>משוקלל</th></tr></thead><tbody>' +
+        cwRows + '</tbody></table></div>'
+      : '') +
+    (chagRows
+      ? '<h2>ימי חג בחודש</h2><div class="scroll"><table><thead><tr><th>תאריך</th><th>חג</th>' +
+        '<th>סטטוס</th></tr></thead><tbody>' + chagRows + '</tbody></table></div>'
+      : '') +
+    '<footer>מעל 8 שעות ביום — שעתיים 125%, מעבר 150%. שישי — 125% מהשעה הראשונה.<br>' +
+    'שבת וחג — 150%. ערב חג — תקן 7 שעות. מינימום יומי 4:30.<br>' +
+    'הדף מתרענן אוטומטית כל דקה.</footer></div>';
+}
+
+function load(){
+  var token = new URLSearchParams(location.search).get('t');
+  if (!token) { showMsg('🔒 חסר קוד גישה', 'הקישור אינו שלם.'); return; }
+
+  fetch(SUPABASE_URL + '/rest/v1/rpc/wh_view', {
+    method: 'POST',
+    headers: {
+      apikey: ANON_KEY,
+      Authorization: 'Bearer ' + ANON_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ p_view_token: token })
+  })
+  .then(function(res){
+    if (!res.ok) throw new Error('denied');
+    return res.json();
+  })
+  .then(render)
+  .catch(function(){
+    showMsg('🔒 אין הרשאה', 'הקישור שגוי או שפג תוקפו.');
+  });
+}
+
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>
