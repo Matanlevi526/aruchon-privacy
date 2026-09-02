@@ -46,7 +46,13 @@ tr.xr td{padding-top:0}
 margin-top:20px;box-shadow:0 2px 10px rgba(0,0,0,.06)}
 .msg h2{margin:0 0 8px;color:#0f172a}
 footer{text-align:center;color:#94a3b8;font-size:12px;margin-top:24px;padding:0 16px;line-height:1.7}
+.xbtn{display:block;width:100%;margin-top:16px;padding:14px;border:0;border-radius:14px;
+background:#0e7490;color:#fff;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;
+box-shadow:0 2px 10px rgba(0,0,0,.08)}
+.xbtn:active{background:#155e75}
+.xbtn[disabled]{opacity:.6}
 </style>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 <div id="app"><div class="msg">טוען…</div></div>
@@ -123,6 +129,7 @@ function hhmm(iso){
     timeZone: ZONE, hour: '2-digit', minute: '2-digit', hour12: false
   }).format(new Date(iso));
 }
+function hhmmRaw(iso){ return iso ? hhmm(iso) : ''; }
 function ddmm(k){ var p = k.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
 function monthLabel(mk){
   if (!mk) return '';
@@ -142,7 +149,10 @@ function showMsg(title, text){
     '<div class="msg"><h2>' + esc(title) + '</h2><p>' + esc(text) + '</p></div>';
 }
 
+var LAST = null;
+
 function render(data){
+  LAST = data;
   var month = data.month || '';
   var all = data.records || [];
   var rows = all.filter(function(r){ return r.date && r.date.indexOf(month) === 0; })
@@ -227,10 +237,183 @@ function render(data){
       ? '<h2>ימי חג בחודש</h2><div class="scroll"><table><thead><tr><th>תאריך</th><th>חג</th>' +
         '<th>סטטוס</th></tr></thead><tbody>' + chagRows + '</tbody></table></div>'
       : '') +
+    '<button class="xbtn" onclick="exportExcel(this)">📥 הורדת דוח Excel</button>' +
     '<footer>מעל 8 שעות ביום — שעתיים 125%, מעבר 150%. שישי — 125% מהשעה הראשונה.<br>' +
     'שבת וחג — 150%. ערב חג — תקן 7 שעות. מינימום יומי 4:30.<br>' +
     'הדף מתרענן אוטומטית כל דקה.</footer></div>';
 }
+
+// ---------- ייצוא לאקסל (זהה לקובץ שהאפליקציה מייצרת) ----------
+var REPORT_TITLE = 'דף שעות ניקוי ספות — עוז סגל';
+
+function coworkerSummary(rows){
+  var map = {};
+  rows.forEach(function(r){
+    var b = breakdown(r.date, r.totalMinutes);
+    splitCoworkers(r.coworker || '').forEach(function(n){
+      var c = map[n] || { days:0, hours:0, reg:0, ot125:0, ot150:0, weighted:0 };
+      c.days += 1;
+      c.hours += dec(r.totalMinutes);
+      c.reg += dec(b.reg);
+      c.ot125 += dec(b.ot125);
+      c.ot150 += dec(b.ot150);
+      c.weighted += weighted(b);
+      map[n] = c;
+    });
+  });
+  return Object.keys(map).map(function(n){
+    var c = map[n];
+    return { name:n, days:c.days, hours:r2(c.hours), reg:r2(c.reg),
+             ot125:r2(c.ot125), ot150:r2(c.ot150), weighted:r2(c.weighted) };
+  }).sort(function(a,b){ return b.hours - a.hours; });
+}
+
+function buildMainSheet(data, rows, month){
+  var aoa = [];
+  aoa.push([REPORT_TITLE]);
+  aoa.push(['שם עובד: ' + (data.employeeName || ''), '', 'חודש: ' + monthLabel(month)]);
+  aoa.push(['שעות נוספות: מעל 8 שעות ביום — שעתיים 125%, מעבר 150%. שישי: 125% מהשעה הראשונה. שבת וחג: 150%. ערב חג: תקן 7 שעות.']);
+  aoa.push([]);
+  aoa.push(['תאריך','יום','חג / סוג יום','שעת כניסה','שעת יציאה','סה"כ שעות',
+            'שעות 100%','שעות 125%','שעות 150%','סה"כ משוקלל','הערות','עובד נוסף']);
+
+  var tAll=0, tReg=0, t125=0, t150=0, tW=0;
+  rows.forEach(function(r){
+    var b = breakdown(r.date, r.totalMinutes);
+    var dAll = dec(r.totalMinutes), dReg = dec(b.reg), d125 = dec(b.ot125), d150 = dec(b.ot150);
+    var w = weighted(b);
+    tAll += dAll; tReg += dReg; t125 += d125; t150 += d150; tW += w;
+    aoa.push([ddmm(r.date), dayNameHe(r.date), dayTypeLabel(r.date),
+              hhmmRaw(r.entry), hhmmRaw(r.exit), dAll, dReg, d125, d150, w,
+              r.notes || '', r.coworker || '']);
+  });
+
+  aoa.push([]);
+  aoa.push(['','','','','סה"כ חודשי:', r2(tAll), r2(tReg), r2(t125), r2(t150), r2(tW), '', '']);
+
+  var chagim = Object.keys(YOMTOV).filter(function(d){ return d.indexOf(month) === 0; }).sort();
+  var chagHeaderRow = aoa.length + 1;
+  aoa.push([]);
+  aoa.push(['ימי חג בחודש']);
+  aoa.push(['תאריך','יום','שם החג','עבדתי בחג?','זכאות']);
+  if (!chagim.length) {
+    aoa.push(['— אין ימי חג בחודש זה —','','','','']);
+  } else {
+    var paid = 0;
+    chagim.forEach(function(d){
+      var worked = rows.some(function(r){ return r.date === d && r.totalMinutes > 0; });
+      if (!worked) paid++;
+      aoa.push([ddmm(d), dayNameHe(d), YOMTOV[d], worked ? 'כן' : 'לא',
+                worked ? 'שכר 150% (בטבלה למעלה)' : 'דמי חגים — יום בתשלום']);
+    });
+    aoa.push(['','','סה"כ ימי חג בתשלום (דמי חגים):', paid, '']);
+  }
+  aoa.push([]);
+  aoa.push(['דמי חגים: עובד שעתי זכאי ל-9 ימי חג בתשלום בשנה (לאחר 3 חודשי עבודה), בתנאי שלא עבד בחג ולא נעדר סמוך אליו.']);
+
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!views'] = [{ RTL: true }];
+  ws['!cols'] = [{wch:12},{wch:8},{wch:20},{wch:10},{wch:10},{wch:10},
+                 {wch:11},{wch:11},{wch:11},{wch:13},{wch:22},{wch:18}];
+  var last = aoa.length - 1;
+  ws['!merges'] = [
+    { s:{r:0,c:0}, e:{r:0,c:11} },
+    { s:{r:2,c:0}, e:{r:2,c:11} },
+    { s:{r:chagHeaderRow,c:0}, e:{r:chagHeaderRow,c:4} },
+    { s:{r:last,c:0}, e:{r:last,c:11} }
+  ];
+  return ws;
+}
+
+function buildCoworkerSheet(data, rows, month){
+  var withCw = rows.filter(function(r){ return splitCoworkers(r.coworker || '').length > 0; });
+  var summary = coworkerSummary(rows);
+
+  var aoa = [];
+  aoa.push([REPORT_TITLE]);
+  aoa.push(['שם עובד: ' + (data.employeeName || ''), '', 'חודש: ' + monthLabel(month)]);
+  aoa.push(['ריכוז ימים ושעות של עובדים נוספים. חישוב השעות זהה לדף הראשי.']);
+  aoa.push([]);
+  aoa.push(['פירוט ימים']);
+  var detailHeaderRow = aoa.length - 1;
+  aoa.push(['תאריך','יום','חג / סוג יום','שם העובד הנוסף','שעת כניסה','שעת יציאה',
+            'סה"כ שעות','שעות 100%','שעות 125%','שעות 150%','סה"כ משוקלל']);
+
+  if (!withCw.length) {
+    aoa.push(['— לא נרשמו עובדים נוספים החודש —','','','','','','','','','','']);
+  } else {
+    withCw.forEach(function(r){
+      var b = breakdown(r.date, r.totalMinutes);
+      splitCoworkers(r.coworker).forEach(function(n){
+        aoa.push([ddmm(r.date), dayNameHe(r.date), dayTypeLabel(r.date), n,
+                  hhmmRaw(r.entry), hhmmRaw(r.exit), dec(r.totalMinutes),
+                  dec(b.reg), dec(b.ot125), dec(b.ot150), weighted(b)]);
+      });
+    });
+  }
+
+  aoa.push([]);
+  aoa.push(['סיכום נטו לפי עובד']);
+  var summaryHeaderRow = aoa.length - 1;
+  aoa.push(['שם העובד הנוסף','סה"כ ימים','סה"כ שעות','שעות 100%','שעות 125%','שעות 150%','סה"כ משוקלל']);
+
+  if (!summary.length) {
+    aoa.push(['— אין נתונים —','','','','','','']);
+  } else {
+    summary.forEach(function(c){
+      aoa.push([c.name, c.days, c.hours, c.reg, c.ot125, c.ot150, c.weighted]);
+    });
+    var sum = function(f){
+      return r2(summary.reduce(function(a,c){ return a + c[f]; }, 0));
+    };
+    aoa.push(['סה"כ כללי', summary.reduce(function(a,c){ return a + c.days; }, 0),
+              sum('hours'), sum('reg'), sum('ot125'), sum('ot150'), sum('weighted')]);
+  }
+
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!views'] = [{ RTL: true }];
+  ws['!cols'] = [{wch:16},{wch:10},{wch:20},{wch:18},{wch:12},{wch:12},
+                 {wch:13},{wch:11},{wch:11},{wch:11},{wch:13}];
+  ws['!merges'] = [
+    { s:{r:0,c:0}, e:{r:0,c:10} },
+    { s:{r:2,c:0}, e:{r:2,c:10} },
+    { s:{r:detailHeaderRow,c:0}, e:{r:detailHeaderRow,c:10} },
+    { s:{r:summaryHeaderRow,c:0}, e:{r:summaryHeaderRow,c:10} }
+  ];
+  return ws;
+}
+
+function buildWorkbook(data){
+  var month = data.month || '';
+  var rows = (data.records || [])
+    .filter(function(r){ return r.date && r.date.indexOf(month) === 0; })
+    .sort(function(a,b){
+      return (a.date + (a.entry||'')).localeCompare(b.date + (b.entry||''));
+    });
+  var wb = XLSX.utils.book_new();
+  wb.Workbook = { Views: [{ RTL: true }] };
+  XLSX.utils.book_append_sheet(wb, buildMainSheet(data, rows, month), 'שעות');
+  XLSX.utils.book_append_sheet(wb, buildCoworkerSheet(data, rows, month), 'עובדים נוספים');
+  return wb;
+}
+
+function exportExcel(btn){
+  if (!LAST) return;
+  if (typeof XLSX === 'undefined') {
+    alert('ספריית האקסל לא נטענה. בדוק חיבור לאינטרנט ונסה שוב.');
+    return;
+  }
+  var original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'מכין קובץ…'; }
+  try {
+    var wb = buildWorkbook(LAST);
+    XLSX.writeFile(wb, 'shaot-' + (LAST.month || '').replace(/[^0-9-]/g, '') + '.xlsx');
+  } catch (e) {
+    alert('שגיאה בייצוא: ' + e.message);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = original; }
+}
+
 
 function load(){
   var token = new URLSearchParams(location.search).get('t');
