@@ -51,6 +51,26 @@ background:#0e7490;color:#fff;font-size:16px;font-weight:800;font-family:inherit
 box-shadow:0 2px 10px rgba(0,0,0,.08)}
 .xbtn:active{background:#155e75}
 .xbtn[disabled]{opacity:.6}
+.bbtn{border:1px solid #0e7490;background:#fff;color:#0e7490;border-radius:9px;
+padding:3px 9px;font-size:12px;font-weight:800;font-family:inherit;cursor:pointer}
+.bbtn.has{background:#0e7490;color:#fff}
+.bonus{color:#16a34a;font-weight:800}
+.ovl{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;
+align-items:center;justify-content:center;padding:20px;z-index:50}
+.dlg{background:#fff;border-radius:20px;padding:20px;width:100%;max-width:340px;
+box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.dlg h3{margin:0 0 4px;font-size:18px}
+.dlg .d{font-size:13px;color:#64748b;margin:0 0 14px}
+.dlg input{width:100%;padding:14px;font-size:22px;font-weight:800;text-align:center;
+border:2px solid #cbd5e1;border-radius:12px;font-family:inherit;color:#0f172a}
+.dlg input:focus{outline:0;border-color:#0e7490}
+.drow{display:flex;gap:8px;margin-top:14px}
+.drow button{flex:1;padding:12px;border:0;border-radius:12px;font-size:15px;
+font-weight:800;font-family:inherit;cursor:pointer}
+.dsave{background:#0e7490;color:#fff}
+.dcancel{background:#e2e8f0;color:#0f172a}
+.dclear{background:#fee2e2;color:#dc2626;margin-top:8px;width:100%;padding:11px;
+border:0;border-radius:12px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer}
 </style>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
@@ -160,14 +180,15 @@ function render(data){
       return (a.date + (a.entry||'')).localeCompare(b.date + (b.entry||''));
     });
 
-  var tAll=0, tReg=0, t125=0, t150=0, tW=0;
+  var tAll=0, tReg=0, t125=0, t150=0, tW=0, tBonus=0;
   var cw = {};
 
   var bodyRows = rows.map(function(r){
     var b = breakdown(r.date, r.totalMinutes);
     var dAll = dec(r.totalMinutes), dReg = dec(b.reg), d125 = dec(b.ot125), d150 = dec(b.ot150);
     var w = weighted(b);
-    tAll += dAll; tReg += dReg; t125 += d125; t150 += d150; tW += w;
+    var bonusAmt = Number(r.bonus || 0);
+    tAll += dAll; tReg += dReg; t125 += d125; t150 += d150; tW += w; tBonus += bonusAmt;
 
     splitCoworkers(r.coworker || '').forEach(function(n){
       var c = cw[n] || { days:0, hours:0, reg:0, ot125:0, ot150:0, w:0 };
@@ -181,12 +202,19 @@ function render(data){
       d125 > 0 ? '<span class="p125">125%: ' + d125 + '</span>' : '',
       d150 > 0 ? '<span class="p150">150%: ' + d150 + '</span>' : '',
       r.coworker ? '<span class="muted">👥 ' + esc(r.coworker) + '</span>' : '',
-      r.notes ? '<span class="muted">📝 ' + esc(r.notes) + '</span>' : ''
+      r.notes ? '<span class="muted">📝 ' + esc(r.notes) + '</span>' : '',
+      bonusAmt > 0 ? '<span class="bonus">💰 בונוס: ' + bonusAmt + ' ₪</span>' : ''
     ].filter(Boolean).join('');
+
+    var bonusBtn = r.exit
+      ? '<button class="bbtn' + (bonusAmt > 0 ? ' has' : '') + '" onclick="openBonus(\'' +
+        esc(r.id) + '\')">' + (bonusAmt > 0 ? bonusAmt + ' ₪' : '＋ בונוס') + '</button>'
+      : '';
 
     return '<tr><td><b>' + ddmm(r.date) + '</b><div class="sub">' + dayNameHe(r.date) + ' ' +
       badge + '</div></td><td class="num">' + hhmm(r.entry) + '</td><td class="num">' +
-      hhmm(r.exit) + '</td><td class="num tot">' + dAll + '</td></tr>' +
+      hhmm(r.exit) + '</td><td class="num tot">' + dAll +
+      (bonusBtn ? '<div style="margin-top:6px">' + bonusBtn + '</div>' : '') + '</td></tr>' +
       (extra ? '<tr class="xr"><td colspan="4"><div class="chips">' + extra + '</div></td></tr>' : '');
   }).join('');
 
@@ -222,7 +250,12 @@ function render(data){
     '<div class="card wide"><div class="l">סה"כ משוקלל לתשלום</div><div class="v">' + r2(tW) +
     '</div><div class="mini"><span>100%: ' + r2(tReg) + '</span>' +
     '<span class="p125">125%: ' + r2(t125) + '</span>' +
-    '<span class="p150">150%: ' + r2(t150) + '</span></div></div></div>' +
+    '<span class="p150">150%: ' + r2(t150) + '</span></div></div>' +
+    (tBonus > 0
+      ? '<div class="card wide"><div class="l">סה"כ בונוסים</div>' +
+        '<div class="v" style="color:#16a34a">' + r2(tBonus) + ' ₪</div></div>'
+      : '') +
+    '</div>' +
     '<h2>פירוט יומי</h2>' +
     (rows.length
       ? '<div class="scroll"><table><thead><tr><th>תאריך</th><th>כניסה</th><th>יציאה</th>' +
@@ -242,6 +275,74 @@ function render(data){
     'שבת וחג — 150%. ערב חג — תקן 7 שעות. מינימום יומי 4:30.<br>' +
     'הדף מתרענן אוטומטית כל דקה.</footer></div>';
 }
+
+// ---------- בונוס יומי ----------
+function openBonus(recId){
+  if (!LAST) return;
+  var rec = (LAST.records || []).filter(function(r){ return r.id === recId; })[0];
+  if (!rec) return;
+
+  var cur = Number(rec.bonus || 0);
+  var box = document.createElement('div');
+  box.className = 'ovl';
+  box.innerHTML =
+    '<div class="dlg">' +
+      '<h3>בונוס ליום ' + ddmm(rec.date) + '</h3>' +
+      '<p class="d">' + dayNameHe(rec.date) + ' · ' + hhmm(rec.entry) + '–' + hhmm(rec.exit) +
+      ' · ' + dec(rec.totalMinutes) + ' שעות</p>' +
+      '<input id="bin" type="number" inputmode="decimal" step="1" min="0" ' +
+      'placeholder="0" value="' + (cur > 0 ? cur : '') + '">' +
+      '<div class="drow">' +
+        '<button class="dsave">שמור</button>' +
+        '<button class="dcancel">ביטול</button>' +
+      '</div>' +
+      (cur > 0 ? '<button class="dclear">מחק בונוס</button>' : '') +
+    '</div>';
+  document.body.appendChild(box);
+
+  var input = box.querySelector('#bin');
+  input.focus();
+
+  function close(){ document.body.removeChild(box); }
+
+  box.addEventListener('click', function(e){ if (e.target === box) close(); });
+  box.querySelector('.dcancel').onclick = close;
+  box.querySelector('.dsave').onclick = function(){
+    save(parseFloat(input.value || '0') || 0);
+  };
+  var clr = box.querySelector('.dclear');
+  if (clr) clr.onclick = function(){ save(0); };
+  input.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') save(parseFloat(input.value || '0') || 0);
+  });
+
+  function save(amount){
+    if (amount < 0 || amount > 100000) { alert('סכום לא חוקי'); return; }
+    var btn = box.querySelector('.dsave');
+    btn.disabled = true; btn.textContent = 'שומר…';
+    var token = new URLSearchParams(location.search).get('t');
+    fetch(SUPABASE_URL + '/rest/v1/rpc/wh_set_bonus', {
+      method: 'POST',
+      headers: {
+        apikey: ANON_KEY,
+        Authorization: 'Bearer ' + ANON_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ p_view_token: token, p_rec_id: recId, p_bonus: amount })
+    })
+    .then(function(res){
+      if (!res.ok) throw new Error('failed');
+      rec.bonus = amount;
+      close();
+      render(LAST);
+    })
+    .catch(function(){
+      btn.disabled = false; btn.textContent = 'שמור';
+      alert('השמירה נכשלה. בדוק חיבור לאינטרנט ונסה שוב.');
+    });
+  }
+}
+
 
 // ---------- ייצוא לאקסל (זהה לקובץ שהאפליקציה מייצרת) ----------
 var REPORT_TITLE = 'דף שעות ניקוי ספות — עוז סגל';
@@ -275,21 +376,23 @@ function buildMainSheet(data, rows, month){
   aoa.push(['שעות נוספות: מעל 8 שעות ביום — שעתיים 125%, מעבר 150%. שישי: 125% מהשעה הראשונה. שבת וחג: 150%. ערב חג: תקן 7 שעות.']);
   aoa.push([]);
   aoa.push(['תאריך','יום','חג / סוג יום','שעת כניסה','שעת יציאה','סה"כ שעות',
-            'שעות 100%','שעות 125%','שעות 150%','סה"כ משוקלל','הערות','עובד נוסף']);
+            'שעות 100%','שעות 125%','שעות 150%','סה"כ משוקלל',
+            'בונוס (₪)','הערות','עובד נוסף']);
 
-  var tAll=0, tReg=0, t125=0, t150=0, tW=0;
+  var tAll=0, tReg=0, t125=0, t150=0, tW=0, tBonus=0;
   rows.forEach(function(r){
     var b = breakdown(r.date, r.totalMinutes);
     var dAll = dec(r.totalMinutes), dReg = dec(b.reg), d125 = dec(b.ot125), d150 = dec(b.ot150);
     var w = weighted(b);
-    tAll += dAll; tReg += dReg; t125 += d125; t150 += d150; tW += w;
+    var bon = Number(r.bonus || 0);
+    tAll += dAll; tReg += dReg; t125 += d125; t150 += d150; tW += w; tBonus += bon;
     aoa.push([ddmm(r.date), dayNameHe(r.date), dayTypeLabel(r.date),
               hhmmRaw(r.entry), hhmmRaw(r.exit), dAll, dReg, d125, d150, w,
-              r.notes || '', r.coworker || '']);
+              bon || '', r.notes || '', r.coworker || '']);
   });
 
   aoa.push([]);
-  aoa.push(['','','','','סה"כ חודשי:', r2(tAll), r2(tReg), r2(t125), r2(t150), r2(tW), '', '']);
+  aoa.push(['','','','','סה"כ חודשי:', r2(tAll), r2(tReg), r2(t125), r2(t150), r2(tW), r2(tBonus), '', '']);
 
   var chagim = Object.keys(YOMTOV).filter(function(d){ return d.indexOf(month) === 0; }).sort();
   var chagHeaderRow = aoa.length + 1;
@@ -309,18 +412,20 @@ function buildMainSheet(data, rows, month){
     aoa.push(['','','סה"כ ימי חג בתשלום (דמי חגים):', paid, '']);
   }
   aoa.push([]);
+  aoa.push(['סה"כ בונוסים לתשלום (₪):', r2(tBonus)]);
+  aoa.push([]);
   aoa.push(['דמי חגים: עובד שעתי זכאי ל-9 ימי חג בתשלום בשנה (לאחר 3 חודשי עבודה), בתנאי שלא עבד בחג ולא נעדר סמוך אליו.']);
 
   var ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!views'] = [{ RTL: true }];
   ws['!cols'] = [{wch:12},{wch:8},{wch:20},{wch:10},{wch:10},{wch:10},
-                 {wch:11},{wch:11},{wch:11},{wch:13},{wch:22},{wch:18}];
+                 {wch:11},{wch:11},{wch:11},{wch:13},{wch:12},{wch:22},{wch:18}];
   var last = aoa.length - 1;
   ws['!merges'] = [
-    { s:{r:0,c:0}, e:{r:0,c:11} },
-    { s:{r:2,c:0}, e:{r:2,c:11} },
+    { s:{r:0,c:0}, e:{r:0,c:12} },
+    { s:{r:2,c:0}, e:{r:2,c:12} },
     { s:{r:chagHeaderRow,c:0}, e:{r:chagHeaderRow,c:4} },
-    { s:{r:last,c:0}, e:{r:last,c:11} }
+    { s:{r:last,c:0}, e:{r:last,c:12} }
   ];
   return ws;
 }
